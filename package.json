@@ -1,0 +1,24 @@
+{
+  "name": "reels",
+  "private": true,
+  "description": "Short vertical videos built as HTML and rendered to MP4.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "icons": "node tools/icons.mjs",
+    "preview": "node render.mjs",
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "@fontsource/anton": "^5.3.0",
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@tabler/icons": "^3.48.0"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

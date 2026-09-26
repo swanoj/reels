@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PlayZone bucks: the investigation</title>
+<style>
+  @font-face { font-family: 'JB'; font-weight: 400; src: url('../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2') format('woff2'); }
+  @font-face { font-family: 'JB'; font-weight: 500; src: url('../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2') format('woff2'); }
+  @font-face { font-family: 'Inter'; font-weight: 400; src: url('../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2') format('woff2'); }
+  @font-face { font-family: 'Inter'; font-weight: 600; src: url('../node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2') format('woff2'); }
+  @font-face { font-family: 'Anton'; font-weight: 400; src: url('../node_modules/@fontsource/anton/files/anton-latin-400-normal.woff2') format('woff2'); }
+  @font-face { font-family: 'BarlowC'; font-weight: 500; src: url('../node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-500-normal.woff2') format('woff2'); }
+  @font-face { font-family: 'BarlowC'; font-weight: 600; src: url('../node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-600-normal.woff2') format('woff2'); }
+  @font-face { font-family: 'BarlowC'; font-weight: 700; src: url('../node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-700-normal.woff2') format('woff2'); }
+
+  :root {
+    --bg: #161614;
+    --label: #868780;
+    --text: #f2f1ec;
+    --caption: #dbded7;
+    --muted: #74776d;
+    --line: rgba(134, 135, 128, 0.3);
+    --border: rgba(227, 228, 196, 0.85);
+    --gold: #f5b12b;
+    --gold-grad: linear-gradient(180deg, #ffd463 0%, #f5b12b 55%, #e07c0b 100%);
+    --red: #d8665c;
+    --brand-black: #0a0a0a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; background: var(--bg); }
+  body { font-family: 'JB', monospace; color: var(--text); -webkit-font-smoothing: antialiased; }
+
+  .scene { position: absolute; inset: 0; padding: 250px 124px 0; display: none; }
+  .o { opacity: 0; }
+  .label { font-size: 18px; letter-spacing: 0.22em; color: var(--label); text-transform: uppercase; }
+  .sub { font-size: 15px; letter-spacing: 0.16em; color: var(--muted); margin-top: 12px; text-transform: uppercase; }
+  .small { font-size: 16px; letter-spacing: 0.18em; color: var(--label); text-transform: uppercase; }
+  .headline { font-size: 38px; font-weight: 500; letter-spacing: 0.03em; line-height: 1.42; text-transform: uppercase; white-space: pre; min-height: 1px; }
+  .gold { color: var(--gold); }
+
+  /* The file */
+  .file { margin-top: 30px; width: 832px; height: 500px; border: 2px solid var(--border); border-radius: 10px; overflow: hidden; position: relative; }
+  .file .cap { position: absolute; left: 24px; bottom: 22px; font-size: 17px; letter-spacing: 0.16em; }
+  .file .case { position: absolute; right: 24px; top: 22px; font-size: 14px; letter-spacing: 0.18em; color: var(--label); }
+  .meta { font-size: 15px; letter-spacing: 0.16em; color: var(--muted); margin: 28px 0 10px; }
+  .rows { margin-top: 36px; width: 832px; }
+  .row { display: flex; justify-content: space-between; align-items: center; height: 62px; border-bottom: 1px solid var(--line); font-size: 19px; letter-spacing: 0.14em; color: var(--label); position: relative; }
+  .row .strike { position: absolute; left: 0; top: 50%; height: 2px; background: var(--label); width: 0; }
+  .row .mark { font-size: 24px; opacity: 0; }
+  .row.yes span:first-child { color: var(--text); }
+
+  /* Stats */
+  .stat { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 28px; }
+  .big { font-size: 66px; font-weight: 500; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .big.right { text-align: right; color: var(--gold); }
+
+  /* Group chat (a generic messenger look) */
+  .chat { margin-top: 30px; width: 832px; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); font-family: 'Inter', sans-serif; }
+  .chat-head { display: flex; align-items: center; gap: 18px; height: 104px; padding: 0 24px; background: #1f2c34; }
+  .chat-avatar { width: 64px; height: 64px; border-radius: 50%; background: #2a3942; display: grid; place-items: center; font-size: 34px; }
+  .chat-title { font-size: 27px; font-weight: 600; color: #e9edef; }
+  .chat-sub { font-size: 19px; color: #8696a0; margin-top: 4px; }
+  .chat-sub.typing { color: #25d366; }
+  .chat-body { height: 640px; background: #0b141a; padding: 0 22px 18px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; -webkit-mask-image: linear-gradient(transparent 0, #000 70px); mask-image: linear-gradient(transparent 0, #000 70px); }
+  .chat-body.short { height: 560px; }
+  .chat-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+  .msg { max-width: 76%; background: #202c33; border-radius: 4px 16px 16px 16px; padding: 12px 18px 12px; }
+  .msg.out { align-self: flex-end; background: #005c4b; border-radius: 16px 4px 16px 16px; }
+  .msg-from { font-size: 19px; font-weight: 600; margin-bottom: 4px; }
+  .msg-text { font-size: 26px; color: #e9edef; line-height: 1.3; }
+  .msg-time { font-size: 15px; color: #8696a0; margin-left: 14px; white-space: nowrap; }
+  .msg.out .msg-time { color: #a3c9c0; }
+  .ticks { color: #53bdeb; }
+
+  /* Tiles */
+  .grid { display: grid; grid-template-columns: repeat(4, 186px); column-gap: 29px; row-gap: 30px; margin-top: 36px; }
+  .tile { width: 186px; position: relative; }
+  .thumb { width: 186px; height: 126px; border: 2px solid var(--border); border-radius: 8px; background: #1d1d1a; display: grid; place-items: center; color: var(--caption); position: relative; }
+  .tile.gold .thumb { color: var(--gold); background: #1f1c14; }
+  .tcap { font-size: 15px; letter-spacing: 0.12em; color: var(--caption); margin-top: 12px; }
+  .tsub { font-size: 13px; letter-spacing: 0.12em; color: var(--muted); margin-top: 5px; }
+  .stamp { position: absolute; left: 50%; top: 63px; transform: translate(-50%, -50%) rotate(-8deg); border: 3px solid var(--red); color: var(--red); background: rgba(22,22,20,0.82); padding: 6px 12px; font-size: 17px; font-weight: 500; letter-spacing: 0.16em; opacity: 0; }
+  .note { margin-top: 44px; font-size: 22px; letter-spacing: 0.12em; }
+
+  /* The pattern */
+  .loop { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; }
+  .node { position: absolute; transform: translate(-50%, -50%); padding: 13px 22px; border: 2px solid #8a8a85; border-radius: 9px; font-size: 20px; letter-spacing: 0.12em; background: var(--bg); white-space: nowrap; }
+  .node.on { background: var(--gold); border-color: var(--gold); color: #1a1406; }
+  .centre { position: absolute; left: 540px; top: 760px; transform: translate(-50%, -50%); font-size: 16px; letter-spacing: 0.2em; color: var(--label); }
+  .strip { position: absolute; left: 124px; top: 1090px; width: 832px; height: 104px; border: 1px solid var(--line); border-radius: 10px; display: flex; justify-content: space-between; align-items: center; padding: 0 30px; }
+  .strip .v { font-size: 52px; font-weight: 500; color: var(--gold); font-variant-numeric: tabular-nums; }
+
+  /* The breakthrough */
+  .exhibit { margin-top: 56px; width: 832px; border: 2px solid var(--border); border-radius: 10px; padding: 26px 30px 28px; }
+  .exhibit .top { display: flex; justify-content: space-between; font-size: 15px; letter-spacing: 0.16em; color: var(--label); }
+  .brand { font-family: 'Anton', sans-serif; font-size: 86px; line-height: 1.15; margin: 18px 0 10px; transform: skewX(-8deg); background: var(--gold-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .exhibit .bottom { font-size: 16px; letter-spacing: 0.16em; color: var(--caption); }
+
+  /* The evidence */
+  .ledger { margin-top: 40px; width: 832px; }
+  .ledger .head { display: flex; justify-content: space-between; font-size: 14px; letter-spacing: 0.16em; color: var(--muted); padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .ledger .line { display: flex; justify-content: space-between; align-items: center; height: 54px; border-bottom: 1px solid var(--line); font-size: 18px; letter-spacing: 0.1em; }
+  .ledger .line span:last-child { color: var(--gold); }
+  .price { margin-top: 30px; width: 832px; height: 96px; border: 1px solid var(--gold); border-radius: 10px; display: flex; justify-content: space-between; align-items: center; padding: 0 28px; }
+  .price .v { font-size: 34px; font-weight: 500; color: var(--gold); }
+  .fine { margin-top: 12px; font-size: 13px; letter-spacing: 0.14em; color: var(--muted); }
+
+  /* The verdict */
+  .closed { position: absolute; left: 540px; top: 1250px; transform: translate(-50%, -50%) rotate(-7deg); border: 5px solid var(--gold); color: var(--gold); background: rgba(22,22,20,0.9); padding: 16px 30px; font-size: 46px; font-weight: 500; letter-spacing: 0.14em; opacity: 0; white-space: nowrap; }
+
+  /* End card, in the PlayZone flyer identity */
+  #H { padding: 0; background: var(--brand-black); }
+  .sorted { position: absolute; left: 0; right: 0; top: 520px; text-align: center; font-family: 'Anton', sans-serif; font-size: 210px; line-height: 1.02; transform: skewX(-8deg); }
+  .sorted span { display: block; background: var(--gold-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sorted span:first-child { color: #fff; background: none; -webkit-background-clip: initial; }
+  .tags { position: absolute; left: 0; right: 0; top: 1030px; display: flex; justify-content: center; gap: 18px; }
+  .tag { transform: skewX(-8deg); padding: 10px 22px; border: 3px solid var(--gold); font-family: 'BarlowC', sans-serif; font-weight: 600; font-size: 32px; letter-spacing: 0.05em; color: var(--gold); opacity: 0; }
+  .tag.fill { background: var(--gold-grad); color: var(--brand-black); border-color: transparent; }
+  .venue { position: absolute; left: 0; right: 0; top: 1170px; text-align: center; font-family: 'BarlowC', sans-serif; }
+  .venue .n { font-weight: 700; font-size: 44px; letter-spacing: 0.1em; color: #fff; }
+  .venue .a { font-weight: 500; font-size: 28px; letter-spacing: 0.1em; color: #b9b9b2; margin-top: 10px; }
+  .venue .b { font-weight: 700; font-size: 40px; letter-spacing: 0.08em; margin-top: 34px; color: var(--gold); }
+
+  #grain { position: absolute; inset: 0; width: 1080px; height: 1920px; opacity: 0.06; mix-blend-mode: screen; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<section class="scene" id="A">
+  <div class="label o" id="a-label">The file</div>
+  <div class="file o" id="a-file">
+    <svg width="832" height="500" viewBox="0 0 832 500">
+      <defs><radialGradient id="glow" cx="50%" cy="38%" r="70%"><stop offset="0" stop-color="#2c2c28" /><stop offset="1" stop-color="#141412" /></radialGradient></defs>
+      <rect width="832" height="500" fill="url(#glow)" />
+      <circle cx="416" cy="205" r="80" fill="#0e0e0d" />
+      <path d="M226 500 C236 360 326 318 416 318 C506 318 596 360 606 500 Z" fill="#0e0e0d" />
+      <rect x="300" y="178" width="232" height="46" fill="#050505" />
+      <text x="416" y="207" text-anchor="middle" font-family="JB" font-size="14" letter-spacing="2.5" fill="#868780">IDENTITY WITHHELD</text>
+    </svg>
+    <div class="case">CASE 26-B</div>
+    <div class="cap">THE BEST MAN</div>
+  </div>
+  <div class="meta o" id="a-meta">2026 · GOLD COAST</div>
+  <div class="headline" id="a-head"></div>
+  <div class="rows">
+    <div class="row o" id="a-r0"><span>HAS A PLAN</span><span class="mark" style="color:var(--red)">✕</span><div class="strike"></div></div>
+    <div class="row o" id="a-r1"><span>HAS A BOOKING</span><span class="mark" style="color:var(--red)">✕</span><div class="strike"></div></div>
+    <div class="row yes o" id="a-r2"><span>HAS A GROUP CHAT</span><span class="mark gold">✓</span></div>
+  </div>
+</section>
+
+<section class="scene" id="B">
+  <div class="label o" id="b-label">The group chat</div>
+  <div class="stat o" id="b-stat">
+    <div><div class="small">Unread</div><div class="big" id="b-unread">0</div></div>
+    <div><div class="small" style="text-align:right">Decisions</div><div class="big right">0</div></div>
+  </div>
+  <div class="chat o" id="b-chat"></div>
+</section>
+
+<section class="scene" id="C">
+  <div class="label o" id="c-label">The options</div>
+  <div class="sub o" id="c-sub">Floated in the group chat</div>
+  <div class="stat o" id="c-stat">
+    <div><div class="small">Ideas floated</div><div class="big" id="c-ideas">0</div></div>
+    <div><div class="small" style="text-align:right">Hours lost</div><div class="big right" id="c-hours">0</div></div>
+  </div>
+  <div class="grid" id="c-grid"></div>
+  <div class="note o" id="c-note">BOOKINGS MADE: <span class="gold">0</span></div>
+</section>
+
+<section class="scene" id="D">
+  <div class="label o" id="d-label">The pattern</div>
+  <div class="sub o" id="d-sub">How the chat went</div>
+  <svg class="loop" viewBox="0 0 1080 1920">
+    <circle cx="540" cy="760" r="215" fill="none" stroke="rgba(134,135,128,0.35)" stroke-width="2" id="d-ring" opacity="0" />
+    <circle cx="540" cy="760" r="215" fill="none" stroke="#f5b12b" stroke-width="3" id="d-arc" transform="rotate(-90 540 760)" stroke-dasharray="1351 1351" stroke-dashoffset="1351" />
+  </svg>
+  <div class="node o" id="d-n0" style="left:540px; top:545px">SUGGEST</div>
+  <div class="node o" id="d-n1" style="left:755px; top:760px">VOTE</div>
+  <div class="node o" id="d-n2" style="left:540px; top:975px">ARGUE</div>
+  <div class="node o" id="d-n3" style="left:325px; top:760px">MUTE CHAT</div>
+  <div class="centre o" id="d-centre">REPEAT</div>
+  <div class="strip o" id="d-strip"><span class="small">Days to the bucks</span><span class="v" id="d-days">21</span></div>
+</section>
+
+<section class="scene" id="E">
+  <div class="label o" id="e-label">The breakthrough</div>
+  <div class="headline" id="e-head" style="margin-top:30px"></div>
+  <div class="exhibit o" id="e-exhibit">
+    <div class="top"><span>EXHIBIT A</span><span>41 CAVILL AVE · SURFERS PARADISE</span></div>
+    <div class="brand">DANE SWAN'S PLAYZONE</div>
+    <div class="bottom">1,000 M² · THREE LEVELS · OPEN 7 DAYS</div>
+  </div>
+</section>
+
+<section class="scene" id="F">
+  <div class="label o" id="f-label">The evidence</div>
+  <div class="sub o" id="f-sub">All in the ticket</div>
+  <div class="grid" id="f-grid"></div>
+  <div class="ledger">
+    <div class="head o" id="f-head"><span>WHAT THE CHAT ASKED FOR</span><span>PLAYZONE</span></div>
+    <div class="line o" id="f-l0"><span>SOMETHING ACTIVE</span><span>✓ BULL, BALL PIT, DUNK TANK</span></div>
+    <div class="line o" id="f-l1"><span>FOOD</span><span>✓ PIZZA PLATTERS</span></div>
+    <div class="line o" id="f-l2"><span>DRINKS</span><span>✓ DRINK CARDS</span></div>
+    <div class="line o" id="f-l3"><span>ONE BOOKING</span><span>✓ RESERVED SECTION</span></div>
+  </div>
+  <div class="price o" id="f-price"><span class="small">Eat, sip &amp; play</span><span class="v">FROM $59 PP · 2 HRS</span></div>
+  <div class="fine o" id="f-fine">PRICES AT SEP 2026, CONFIRMED ON BOOKING.</div>
+</section>
+
+<section class="scene" id="G">
+  <div class="label o" id="g-label">The verdict</div>
+  <div class="stat o" id="g-stat">
+    <div><div class="small">Unread</div><div class="big" id="g-unread">347</div></div>
+    <div><div class="small" style="text-align:right">Decisions</div><div class="big right" id="g-dec">0</div></div>
+  </div>
+  <div class="chat o" id="g-chat"></div>
+  <div class="closed" id="g-closed">CASE CLOSED.</div>
+</section>
+
+<section class="scene" id="H">
+  <div class="sorted"><span class="o" id="h-1">BUCKS</span><span class="o" id="h-2">SORTED.</span></div>
+  <div class="tags"><div class="tag fill" id="h-t0">BUCKING BULL</div><div class="tag" id="h-t1">UV PICKLEBALL</div><div class="tag fill" id="h-t2">BALL PIT</div></div>
+  <div class="venue">
+    <div class="n o" id="h-n">DANE SWAN'S PLAYZONE GOLD COAST</div>
+    <div class="a o" id="h-a">41 CAVILL AVE, SURFERS PARADISE · 7 DAYS</div>
+    <div class="b o" id="h-b">BOOK AT THEPLAYZONE.COM.AU</div>
+  </div>
+</section>
+
+<canvas id="grain" width="540" height="960"></canvas>
+
+<script src="../lib/icons.js"></script>
+<script src="../lib/engine.js"></script>
+<script>
+  const { $, clamp01, prog, show, type, scenes, steps, fmt, icon, grain, chat } = Reel
+
+  const FPS = 24
+  const DURATION = 58
+  const SCENES = [['A', 0, 6.4], ['B', 6.4, 16.9], ['C', 16.9, 25.6], ['D', 25.6, 32.4], ['E', 32.4, 38.6], ['F', 38.6, 47.6], ['G', 47.6, 54.0], ['H', 54.0, 58.1, true]]
+  const SOUNDS = []   // [t, kind] cues, synthesised by render.mjs
+  const cue = (t, kind) => SOUNDS.push([t, kind])
+
+  // A: the file
+  const A_ROWS = [2.6, 3.25, 3.9]
+  A_ROWS.forEach((at, i) => cue(at + (i < 2 ? 0.45 : 0.3), i < 2 ? 'tick' : 'tock'))
+  function sceneA(t) {
+    show($('a-label'), t, 0.15)
+    show($('a-file'), t, 0.3, 0.5, 26)
+    show($('a-meta'), t, 0.95, 0.3, 8)
+    type($('a-head'), "HE SAID HE'D\nSORT THE BUCKS.", t, 1.0, 1.2)
+    A_ROWS.forEach((at, i) => {
+      const row = $('a-r' + i)
+      show(row, t, at, 0.25, 10)
+      const strike = row.querySelector('.strike')
+      if (strike) strike.style.width = prog(t, at + 0.25, 0.25) * 60 + '%'
+      row.querySelector('.mark').style.opacity = prog(t, at + (strike ? 0.45 : 0.3), 0.15)
+    })
+  }
+
+  // B: the group chat
+  const MEMBERS = 'Tommo, Dazza, Jacko, Benno, Mick, Rhys +8'
+  const FLOOD = [
+    ['Tommo', "who's actually organising this"], ['Dazza', 'best man 👀'], ['Jacko', 'something ACTIVE this time pls'],
+    ['Benno', 'budget??'], ['Mick', "I'm in if there's food"], ['Tommo', 'boat day?'], ['Dazza', "did a boat day for Col's"],
+    ['Jacko', 'paintball'], ['Benno', 'forecast says rain'], ['Rhys', 'can we do ONE place. not 5 bookings'], ['Mick', 'and food'],
+  ].map(([from, text], i) => ({ at: 7.2 + i * 0.7, from, text, time: `9:${String(41 + Math.floor(i / 3)).padStart(2, '0')} pm` }))
+  FLOOD.forEach((m) => cue(m.at, 'pop'))
+  const UNREAD = [14, 37, 61, 88, 119, 146, 178, 213, 251, 296, 347]
+  const chatB = chat($('b-chat'), { title: "Jake's Bucks 🍻", avatar: '🤠', members: MEMBERS, messages: FLOOD })
+  $('b-chat').querySelector('.chat-body').classList.add('short')
+  function sceneB(t) {
+    show($('b-label'), t, 6.5)
+    show($('b-stat'), t, 6.6, 0.3, 10)
+    show($('b-chat'), t, 6.8, 0.4, 24)
+    $('b-unread').textContent = fmt(steps(FLOOD.map((m) => m.at), UNREAD, t))
+    chatB(t)
+  }
+
+  // C: the options
+  const OPTIONS = [['sailboat', 'BOAT DAY', 'DONE IT'], ['target', 'PAINTBALL', 'RAIN FORECAST'], ['beer', 'PUB CRAWL', 'SIX BOOKINGS'],
+    ['steering-wheel', 'GO-KARTS', 'TOO FAR'], ['cards', 'CASINO', 'THREE KEEN'], ['fish-hook', 'FISHING TRIP', 'SEASICK'],
+    ['grill', "BBQ AT DAZZA'S", "HIS MUM'S HOME"], ['lock', 'ESCAPE ROOM', "FITS 6. WE'RE 14."]]
+  const C_AT = OPTIONS.map((_, i) => 17.5 + i * 0.5)
+  const C_STAMP = OPTIONS.map((_, i) => 21.7 + i * 0.12)
+  const HOURS = [1, 2, 4, 5, 7, 8, 10, 11]
+  C_AT.forEach((at) => cue(at, 'tick'))
+  C_STAMP.forEach((at) => cue(at, 'thud'))
+  OPTIONS.forEach(([ic, name, why], i) => {
+    const tile = document.createElement('div')
+    tile.className = 'tile o'
+    tile.id = 'c-t' + i
+    tile.innerHTML = `<div class="thumb">${icon(ic)}</div><div class="tcap">${name}</div><div class="tsub">${why}</div><div class="stamp">REJECTED</div>`
+    $('c-grid').appendChild(tile)
+  })
+  function sceneC(t) {
+    show($('c-label'), t, 16.95)
+    show($('c-sub'), t, 17.05, 0.3, 8)
+    show($('c-stat'), t, 17.1, 0.3, 10)
+    OPTIONS.forEach((_, i) => {
+      const tile = $('c-t' + i)
+      const p = prog(t, C_AT[i], 0.28)
+      const s = prog(t, C_STAMP[i], 0.12)
+      tile.style.opacity = p * (1 - 0.35 * s)
+      tile.style.transform = `scale(${0.94 + 0.06 * p})`
+      const stamp = tile.querySelector('.stamp')
+      stamp.style.opacity = s
+      stamp.style.transform = `translate(-50%, -50%) rotate(-8deg) scale(${1.6 - 0.6 * s})`
+    })
+    $('c-ideas').textContent = fmt(steps(C_AT, C_AT.map((_, i) => i + 1), t))
+    $('c-hours').textContent = fmt(steps(C_AT, HOURS, t))
+    show($('c-note'), t, 22.9, 0.35, 10)
+  }
+
+  // D: the pattern
+  const ARC = 2 * Math.PI * 215
+  const LIGHT = [26.4, 27.15, 27.9, 28.65]
+  LIGHT.forEach((at) => cue(at, 'tock'))
+  cue(29.4, 'tock')
+  const DAYS_AT = Array.from({ length: 15 }, (_, i) => 26.8 + i * 0.22)
+  DAYS_AT.forEach((at) => cue(at, 'soft'))
+  function sceneD(t) {
+    show($('d-label'), t, 25.65)
+    show($('d-sub'), t, 25.75, 0.3, 8)
+    $('d-ring').setAttribute('opacity', prog(t, 25.8, 0.3))
+    for (let i = 0; i < 4; i++) {
+      const el = $('d-n' + i)
+      el.dataset.base = 'translate(-50%, -50%)'
+      show(el, t, 25.85 + i * 0.08, 0.3, 8)
+      el.classList.toggle('on', t >= LIGHT[i])
+    }
+    $('d-arc').setAttribute('stroke-dashoffset', ARC * (1 - clamp01((t - 26.4) / 3.0)))
+    show($('d-centre'), t, 29.4, 0.3, 0)
+    show($('d-strip'), t, 26.2, 0.35, 12)
+    const passed = DAYS_AT.filter((at) => t >= at).length
+    $('d-days').textContent = 21 - passed
+  }
+
+  // E: the breakthrough
+  cue(35.0, 'reveal')
+  function sceneE(t) {
+    show($('e-label'), t, 32.45)
+    type($('e-head'), 'THEN SOMEONE FOUND\nONE PLACE THAT\nDOES ALL OF IT.', t, 32.7, 1.9)
+    const p = show($('e-exhibit'), t, 35.0, 0.45, 20)
+    $('e-exhibit').style.boxShadow = `0 0 ${60 * (1 - p) * clamp01((t - 35) * 8)}px rgba(245,177,43,${0.5 * (1 - p)})`
+  }
+
+  // F: the evidence
+  const EVIDENCE = [['bull', 'BUCKING BULL'], ['pickleball', 'UV PICKLEBALL'], ['circles', 'GIANT BALL PIT'], ['bucket-droplet', 'DUNK TANK'],
+    ['device-gamepad-2', 'ARCADE'], ['eight-ball', 'POOL'], ['ping-pong', 'TABLE TENNIS'], ['puck', 'AIR HOCKEY']]
+  const F_AT = EVIDENCE.map((_, i) => 39.1 + i * 0.35)
+  const F_LINES = [42.1, 42.6, 43.1, 43.6]
+  F_AT.forEach((at) => cue(at, 'tick'))
+  F_LINES.forEach((at) => cue(at, 'tock'))
+  cue(44.3, 'reveal')
+  EVIDENCE.forEach(([ic, name], i) => {
+    const tile = document.createElement('div')
+    tile.className = 'tile gold o'
+    tile.id = 'f-t' + i
+    tile.innerHTML = `<div class="thumb">${icon(ic)}</div><div class="tcap">${name}</div><div class="tsub">EXHIBIT ${'BCDEFGHI'[i]}</div>`
+    $('f-grid').appendChild(tile)
+  })
+  function sceneF(t) {
+    show($('f-label'), t, 38.65)
+    show($('f-sub'), t, 38.75, 0.3, 8)
+    EVIDENCE.forEach((_, i) => {
+      const tile = $('f-t' + i)
+      const p = prog(t, F_AT[i], 0.28)
+      tile.style.opacity = p
+      tile.style.transform = `scale(${0.94 + 0.06 * p})`
+    })
+    show($('f-head'), t, 41.8, 0.3, 8)
+    F_LINES.forEach((at, i) => show($('f-l' + i), t, at, 0.3, 10))
+    show($('f-price'), t, 44.3, 0.4, 14)
+    show($('f-fine'), t, 44.7, 0.3, 6)
+  }
+
+  // G: the verdict
+  const VERDICT = [
+    { at: 48.1, out: true, text: 'booked. playzone. saturday 🍻', time: '10:02 pm' },
+    ...[['Tommo', 'LEGEND'], ['Jacko', "bucking bull 🐂 let's gooo"], ['Mick', 'is there food'], ['Benno', 'pizza mate 🍕'], ['Rhys', 'one booking. hero.']]
+      .map(([from, text], i) => ({ at: 48.9 + i * 0.6, from, text, time: '10:03 pm' })),
+  ]
+  cue(48.1, 'send')
+  VERDICT.slice(1).forEach((m) => cue(m.at, 'pop'))
+  cue(48.35, 'tock')
+  cue(51.9, 'thud')
+  const chatG = chat($('g-chat'), { title: "Jake's Bucks 🍻", avatar: '🤠', members: MEMBERS, messages: VERDICT })
+  $('g-chat').querySelector('.chat-body').classList.add('short')
+  function sceneG(t) {
+    show($('g-label'), t, 47.65)
+    show($('g-stat'), t, 47.7, 0.3, 10)
+    show($('g-chat'), t, 47.75, 0.35, 20)
+    $('g-unread').textContent = fmt(347 * (1 - prog(t, 48.35, 0.5)))
+    $('g-dec').textContent = t >= 48.35 ? '1' : '0'
+    chatG(t)
+    const s = prog(t, 51.9, 0.14)
+    const c = $('g-closed')
+    c.style.opacity = s
+    c.style.transform = `translate(-50%, -50%) rotate(-7deg) scale(${1.7 - 0.7 * s})`
+  }
+
+  // H: end card
+  cue(54.25, 'thud')
+  cue(54.55, 'swell')
+  function sceneH(t) {
+    show($('h-1'), t, 54.1, 0.3, 30)
+    const s = prog(t, 54.4, 0.18)
+    const two = $('h-2')
+    two.style.opacity = s
+    two.style.transform = `scale(${1.35 - 0.35 * s})`
+    for (let i = 0; i < 3; i++) {
+      const tag = $('h-t' + i)
+      const p = prog(t, 54.9 + i * 0.12, 0.3)
+      tag.style.opacity = p
+      tag.style.transform = `skewX(-8deg) translateY(${(1 - p) * 20}px)`
+    }
+    show($('h-n'), t, 55.4, 0.35, 10)
+    show($('h-a'), t, 55.55, 0.35, 10)
+    show($('h-b'), t, 55.8, 0.35, 10)
+  }
+
+  window.REEL = { fps: FPS, duration: DURATION, sounds: SOUNDS }
+  window.renderFrame = (t) => {
+    scenes(SCENES, t)
+    sceneA(t); sceneB(t); sceneC(t); sceneD(t); sceneE(t); sceneF(t); sceneG(t); sceneH(t)
+    grain($('grain'), Math.round(t * FPS))
+  }
+  window.renderFrame(0)
+</script>
+</body>
+</html>
