@@ -237,53 +237,69 @@
   const { $, clamp01, prog, show, type, scenes, steps, fmt, icon, grain, chat } = Reel
 
   const FPS = 24
-  const DURATION = 58
-  const SCENES = [['A', 0, 6.4], ['B', 6.4, 16.9], ['C', 16.9, 25.6], ['D', 25.6, 32.4], ['E', 32.4, 38.6], ['F', 38.6, 47.6], ['G', 47.6, 54.0], ['H', 54.0, 58.1, true]]
+  // Scene lengths, each long enough for its voiceover line. Times inside a scene are offsets from its start (S.x).
+  const LEN = { A: 6.9, B: 10.0, C: 10.0, D: 6.9, E: 6.3, F: 9.4, G: 6.8, H: 4.4 }
+  const S = {}
+  let DURATION = 0
+  for (const k in LEN) { S[k] = DURATION; DURATION += LEN[k] }
+  const SCENES = Object.keys(LEN).map((k) => [k, S[k], k === 'H' ? DURATION + 0.1 : S[k] + LEN[k], k === 'H'])
   const SOUNDS = []   // [t, kind] cues, synthesised by render.mjs
   const cue = (t, kind) => SOUNDS.push([t, kind])
 
-  // A: the file
-  const A_ROWS = [2.6, 3.25, 3.9]
-  A_ROWS.forEach((at, i) => cue(at + (i < 2 ? 0.45 : 0.3), i < 2 ? 'tick' : 'tock'))
+  // voice/voiceover.mp3 is one ElevenLabs take (voice "Jack - Calm and Narrative", eleven_multilingual_v2), 1.5 s between lines.
+  // Each line: its scene, how long after the scene starts it plays, and its span in the file (from silence detection).
+  // The beats in each scene below sit on the words, measured the same way.
+  const VOICE = {
+    file: 'voice/voiceover.mp3',
+    lines: [['A', 0.35, 0.0, 5.92], ['B', 0.6, 7.43, 13.79], ['C', 0.35, 15.25, 23.23], ['D', 0.5, 24.5, 30.23],
+      ['E', 0.15, 31.53, 37.24], ['F', 0.3, 38.37, 46.89], ['G', 0.24, 48.07, 53.17], ['H', 0, 54.72, 56.5]]
+      .map(([k, lead, from, to]) => ({ at: S[k] + lead, from, to })),
+  }
+
+  // A: the file. "He had no plan. No booking. Just... a group chat."
+  const A_ROWS = [[2.45, 2.95, 3.25], [3.8, 4.05, 4.35], [5.25, null, 5.7]].map((r) => r.map((x) => (x === null ? null : S.A + x)))
+  A_ROWS.forEach(([, strike, mark]) => cue(mark, strike ? 'tick' : 'tock'))
   function sceneA(t) {
-    show($('a-label'), t, 0.15)
-    show($('a-file'), t, 0.3, 0.5, 26)
-    show($('a-meta'), t, 0.95, 0.3, 8)
-    type($('a-head'), "HE SAID HE'D\nSORT THE BUCKS.", t, 1.0, 1.2)
-    A_ROWS.forEach((at, i) => {
+    const a = S.A
+    show($('a-label'), t, a + 0.15)
+    show($('a-file'), t, a + 0.3, 0.5, 26)
+    show($('a-meta'), t, a + 0.95, 0.3, 8)
+    type($('a-head'), "HE SAID HE'D\nSORT THE BUCKS.", t, a + 0.9, 1.3)
+    A_ROWS.forEach(([at, strikeAt, markAt], i) => {
       const row = $('a-r' + i)
       show(row, t, at, 0.25, 10)
       const strike = row.querySelector('.strike')
-      if (strike) strike.style.width = prog(t, at + 0.25, 0.25) * 60 + '%'
-      row.querySelector('.mark').style.opacity = prog(t, at + (strike ? 0.45 : 0.3), 0.15)
+      if (strike) strike.style.width = prog(t, strikeAt, 0.25) * 60 + '%'
+      row.querySelector('.mark').style.opacity = prog(t, markAt, 0.15)
     })
   }
 
-  // B: the group chat
+  // B: the group chat. "Within the hour, fourteen blokes had sent three hundred and forty-seven messages. Decisions made: zero."
   const MEMBERS = 'Tommo, Dazza, Jacko, Benno, Mick, Rhys +8'
   const FLOOD = [
     ['Tommo', "who's actually organising this"], ['Dazza', 'best man 👀'], ['Jacko', 'something ACTIVE this time pls'],
     ['Benno', 'budget??'], ['Mick', "I'm in if there's food"], ['Tommo', 'boat day?'], ['Dazza', "did a boat day for Col's"],
     ['Jacko', 'paintball'], ['Benno', 'forecast says rain'], ['Rhys', 'can we do ONE place. not 5 bookings'], ['Mick', 'and food'],
-  ].map(([from, text], i) => ({ at: 7.2 + i * 0.7, from, text, time: `9:${String(41 + Math.floor(i / 3)).padStart(2, '0')} pm` }))
+  ].map(([from, text], i) => ({ at: S.B + 0.8 + i * 0.7, from, text, time: `9:${String(41 + Math.floor(i / 3)).padStart(2, '0')} pm` }))
   FLOOD.forEach((m) => cue(m.at, 'pop'))
   const UNREAD = [14, 37, 61, 88, 119, 146, 178, 213, 251, 296, 347]
   const chatB = chat($('b-chat'), { title: "Jake's Bucks 🍻", avatar: '🤠', members: MEMBERS, messages: FLOOD })
   $('b-chat').querySelector('.chat-body').classList.add('short')
   function sceneB(t) {
-    show($('b-label'), t, 6.5)
-    show($('b-stat'), t, 6.6, 0.3, 10)
-    show($('b-chat'), t, 6.8, 0.4, 24)
+    const b = S.B
+    show($('b-label'), t, b + 0.1)
+    show($('b-stat'), t, b + 0.2, 0.3, 10)
+    show($('b-chat'), t, b + 0.4, 0.4, 24)
     $('b-unread').textContent = fmt(steps(FLOOD.map((m) => m.at), UNREAD, t))
     chatB(t)
   }
 
-  // C: the options
+  // C: the options. Tiles land as "Boat day", "Paintball" and "A pub crawl" are said; the stamps land on "rejected".
   const OPTIONS = [['sailboat', 'BOAT DAY', 'DONE IT'], ['target', 'PAINTBALL', 'RAIN FORECAST'], ['beer', 'PUB CRAWL', 'SIX BOOKINGS'],
     ['steering-wheel', 'GO-KARTS', 'TOO FAR'], ['cards', 'CASINO', 'THREE KEEN'], ['fish-hook', 'FISHING TRIP', 'SEASICK'],
     ['grill', "BBQ AT DAZZA'S", "HIS MUM'S HOME"], ['lock', 'ESCAPE ROOM', "FITS 6. WE'RE 14."]]
-  const C_AT = OPTIONS.map((_, i) => 17.5 + i * 0.5)
-  const C_STAMP = OPTIONS.map((_, i) => 21.7 + i * 0.12)
+  const C_AT = [0.45, 2.2, 3.9, 4.9, 5.2, 5.5, 5.8, 6.1].map((x) => S.C + x)
+  const C_STAMP = OPTIONS.map((_, i) => S.C + 7.55 + i * 0.09)
   const HOURS = [1, 2, 4, 5, 7, 8, 10, 11]
   C_AT.forEach((at) => cue(at, 'tick'))
   C_STAMP.forEach((at) => cue(at, 'thud'))
@@ -295,9 +311,10 @@
     $('c-grid').appendChild(tile)
   })
   function sceneC(t) {
-    show($('c-label'), t, 16.95)
-    show($('c-sub'), t, 17.05, 0.3, 8)
-    show($('c-stat'), t, 17.1, 0.3, 10)
+    const c = S.C
+    show($('c-label'), t, c + 0.05)
+    show($('c-sub'), t, c + 0.15, 0.3, 8)
+    show($('c-stat'), t, c + 0.2, 0.3, 10)
     OPTIONS.forEach((_, i) => {
       const tile = $('c-t' + i)
       const p = prog(t, C_AT[i], 0.28)
@@ -310,50 +327,57 @@
     })
     $('c-ideas').textContent = fmt(steps(C_AT, C_AT.map((_, i) => i + 1), t))
     $('c-hours').textContent = fmt(steps(C_AT, HOURS, t))
-    show($('c-note'), t, 22.9, 0.35, 10)
+    show($('c-note'), t, c + 8.5, 0.35, 10)
   }
 
-  // D: the pattern
+  // D: the pattern. Each node lights on its word: "Suggest. Vote. Argue. Mute the chat. Repeat."
+  // The days count down under "And the days kept ticking down."
   const ARC = 2 * Math.PI * 215
-  const LIGHT = [26.4, 27.15, 27.9, 28.65]
+  const LIGHT = [0.61, 1.56, 2.24, 3.05].map((x) => S.D + x)
+  const REPEAT = S.D + 4.01
   LIGHT.forEach((at) => cue(at, 'tock'))
-  cue(29.4, 'tock')
-  const DAYS_AT = Array.from({ length: 15 }, (_, i) => 26.8 + i * 0.22)
+  cue(REPEAT, 'tock')
+  const DAYS_AT = Array.from({ length: 15 }, (_, i) => S.D + 4.76 + i * 0.09)
   DAYS_AT.forEach((at) => cue(at, 'soft'))
   function sceneD(t) {
-    show($('d-label'), t, 25.65)
-    show($('d-sub'), t, 25.75, 0.3, 8)
-    $('d-ring').setAttribute('opacity', prog(t, 25.8, 0.3))
+    const d = S.D
+    show($('d-label'), t, d + 0.05)
+    show($('d-sub'), t, d + 0.15, 0.3, 8)
+    $('d-ring').setAttribute('opacity', prog(t, d + 0.2, 0.3))
     for (let i = 0; i < 4; i++) {
       const el = $('d-n' + i)
       el.dataset.base = 'translate(-50%, -50%)'
-      show(el, t, 25.85 + i * 0.08, 0.3, 8)
+      show(el, t, d + 0.25 + i * 0.08, 0.3, 8)
       el.classList.toggle('on', t >= LIGHT[i])
     }
-    $('d-arc').setAttribute('stroke-dashoffset', ARC * (1 - clamp01((t - 26.4) / 3.0)))
-    show($('d-centre'), t, 29.4, 0.3, 0)
-    show($('d-strip'), t, 26.2, 0.35, 12)
+    $('d-arc').setAttribute('stroke-dashoffset', ARC * (1 - clamp01((t - LIGHT[0]) / (REPEAT - LIGHT[0]))))
+    show($('d-centre'), t, REPEAT, 0.3, 0)
+    show($('d-strip'), t, d + 0.6, 0.35, 12)
     const passed = DAYS_AT.filter((at) => t >= at).length
     $('d-days').textContent = 21 - passed
   }
 
-  // E: the breakthrough
-  cue(35.0, 'reveal')
+  // E: the breakthrough. The exhibit lands just before "Dane Swan's PlayZone. Surfers Paradise."
+  const EXHIBIT = S.E + 2.6
+  cue(EXHIBIT, 'reveal')
   function sceneE(t) {
-    show($('e-label'), t, 32.45)
-    type($('e-head'), 'THEN SOMEONE FOUND\nONE PLACE THAT\nDOES ALL OF IT.', t, 32.7, 1.9)
-    const p = show($('e-exhibit'), t, 35.0, 0.45, 20)
-    $('e-exhibit').style.boxShadow = `0 0 ${60 * (1 - p) * clamp01((t - 35) * 8)}px rgba(245,177,43,${0.5 * (1 - p)})`
+    show($('e-label'), t, S.E + 0.05)
+    type($('e-head'), 'THEN SOMEONE FOUND\nONE PLACE THAT\nDOES ALL OF IT.', t, S.E + 0.25, 2.0)
+    const p = show($('e-exhibit'), t, EXHIBIT, 0.45, 20)
+    $('e-exhibit').style.boxShadow = `0 0 ${60 * (1 - p) * clamp01((t - EXHIBIT) * 8)}px rgba(245,177,43,${0.5 * (1 - p)})`
   }
 
-  // F: the evidence
+  // F: the evidence. The first four exhibits land as they're named; the ledger lines on "Pizza, drinks, one booking";
+  // the price on "From fifty-nine dollars a head".
   const EVIDENCE = [['bull', 'BUCKING BULL'], ['pickleball', 'UV PICKLEBALL'], ['circles', 'GIANT BALL PIT'], ['bucket-droplet', 'DUNK TANK'],
     ['device-gamepad-2', 'ARCADE'], ['eight-ball', 'POOL'], ['ping-pong', 'TABLE TENNIS'], ['puck', 'AIR HOCKEY']]
-  const F_AT = EVIDENCE.map((_, i) => 39.1 + i * 0.35)
-  const F_LINES = [42.1, 42.6, 43.1, 43.6]
+  const F_AT = [0.4, 1.25, 2.47, 3.56, 3.75, 3.9, 4.05, 4.2].map((x) => S.F + x)
+  const F_HEAD = S.F + 4.3
+  const F_LINES = [4.45, 4.85, 5.45, 6.05].map((x) => S.F + x)
+  const F_PRICE = S.F + 6.75
   F_AT.forEach((at) => cue(at, 'tick'))
   F_LINES.forEach((at) => cue(at, 'tock'))
-  cue(44.3, 'reveal')
+  cue(F_PRICE, 'reveal')
   EVIDENCE.forEach(([ic, name], i) => {
     const tile = document.createElement('div')
     tile.className = 'tile gold o'
@@ -362,66 +386,72 @@
     $('f-grid').appendChild(tile)
   })
   function sceneF(t) {
-    show($('f-label'), t, 38.65)
-    show($('f-sub'), t, 38.75, 0.3, 8)
+    show($('f-label'), t, S.F + 0.05)
+    show($('f-sub'), t, S.F + 0.15, 0.3, 8)
     EVIDENCE.forEach((_, i) => {
       const tile = $('f-t' + i)
       const p = prog(t, F_AT[i], 0.28)
       tile.style.opacity = p
       tile.style.transform = `scale(${0.94 + 0.06 * p})`
     })
-    show($('f-head'), t, 41.8, 0.3, 8)
+    show($('f-head'), t, F_HEAD, 0.3, 8)
     F_LINES.forEach((at, i) => show($('f-l' + i), t, at, 0.3, 10))
-    show($('f-price'), t, 44.3, 0.4, 14)
-    show($('f-fine'), t, 44.7, 0.3, 6)
+    show($('f-price'), t, F_PRICE, 0.4, 14)
+    show($('f-fine'), t, F_PRICE + 0.4, 0.3, 6)
   }
 
-  // G: the verdict
+  // G: the verdict. "Booked." sends the message; the thread stays quiet through "The chat went quiet";
+  // the replies start on "legend"; the stamp lands on "Case closed."
+  const G_SENT = S.G + 0.45
+  const G_DECIDED = S.G + 0.8
+  const G_CLOSED = S.G + 4.35
   const VERDICT = [
-    { at: 48.1, out: true, text: 'booked. playzone. saturday 🍻', time: '10:02 pm' },
+    { at: G_SENT, out: true, text: 'booked. playzone. saturday 🍻', time: '10:02 pm' },
     ...[['Tommo', 'LEGEND'], ['Jacko', "bucking bull 🐂 let's gooo"], ['Mick', 'is there food'], ['Benno', 'pizza mate 🍕'], ['Rhys', 'one booking. hero.']]
-      .map(([from, text], i) => ({ at: 48.9 + i * 0.6, from, text, time: '10:03 pm' })),
+      .map(([from, text], i) => ({ at: S.G + 3.9 + i * 0.4, from, text, time: '10:03 pm' })),
   ]
-  cue(48.1, 'send')
+  cue(G_SENT, 'send')
   VERDICT.slice(1).forEach((m) => cue(m.at, 'pop'))
-  cue(48.35, 'tock')
-  cue(51.9, 'thud')
+  cue(G_DECIDED, 'tock')
+  cue(G_CLOSED, 'thud')
   const chatG = chat($('g-chat'), { title: "Jake's Bucks 🍻", avatar: '🤠', members: MEMBERS, messages: VERDICT })
   $('g-chat').querySelector('.chat-body').classList.add('short')
   function sceneG(t) {
-    show($('g-label'), t, 47.65)
-    show($('g-stat'), t, 47.7, 0.3, 10)
-    show($('g-chat'), t, 47.75, 0.35, 20)
-    $('g-unread').textContent = fmt(347 * (1 - prog(t, 48.35, 0.5)))
-    $('g-dec').textContent = t >= 48.35 ? '1' : '0'
+    show($('g-label'), t, S.G + 0.05)
+    show($('g-stat'), t, S.G + 0.1, 0.3, 10)
+    show($('g-chat'), t, S.G + 0.15, 0.35, 20)
+    $('g-unread').textContent = fmt(347 * (1 - prog(t, G_DECIDED, 0.5)))
+    $('g-dec').textContent = t >= G_DECIDED ? '1' : '0'
     chatG(t)
-    const s = prog(t, 51.9, 0.14)
+    const s = prog(t, G_CLOSED, 0.14)
     const c = $('g-closed')
     c.style.opacity = s
     c.style.transform = `translate(-50%, -50%) rotate(-7deg) scale(${1.7 - 0.7 * s})`
   }
 
-  // H: end card
-  cue(54.25, 'thud')
-  cue(54.55, 'swell')
+  // H: end card. "Bucks." as BUCKS appears; SORTED. slams on "Sorted."
+  const H_SLAM = S.H + 0.8
+  cue(H_SLAM, 'thud')
+  cue(H_SLAM + 0.15, 'swell')
   function sceneH(t) {
-    show($('h-1'), t, 54.1, 0.3, 30)
-    const s = prog(t, 54.4, 0.18)
+    const h = S.H
+    show($('h-1'), t, h + 0.05, 0.3, 30)
+    const s = prog(t, H_SLAM, 0.18)
     const two = $('h-2')
     two.style.opacity = s
     two.style.transform = `scale(${1.35 - 0.35 * s})`
     for (let i = 0; i < 3; i++) {
       const tag = $('h-t' + i)
-      const p = prog(t, 54.9 + i * 0.12, 0.3)
+      const p = prog(t, h + 1.3 + i * 0.12, 0.3)
       tag.style.opacity = p
       tag.style.transform = `skewX(-8deg) translateY(${(1 - p) * 20}px)`
     }
-    show($('h-n'), t, 55.4, 0.35, 10)
-    show($('h-a'), t, 55.55, 0.35, 10)
-    show($('h-b'), t, 55.8, 0.35, 10)
+    show($('h-n'), t, h + 1.75, 0.35, 10)
+    show($('h-a'), t, h + 1.9, 0.35, 10)
+    show($('h-b'), t, h + 2.15, 0.35, 10)
   }
 
-  window.REEL = { fps: FPS, duration: DURATION, sounds: SOUNDS }
+  window.REEL = { fps: FPS, duration: DURATION, sounds: SOUNDS, voice: VOICE }
   window.renderFrame = (t) => {
     scenes(SCENES, t)
     sceneA(t); sceneB(t); sceneC(t); sceneD(t); sceneE(t); sceneF(t); sceneG(t); sceneH(t)

@@ -1,6 +1,6 @@
 // Renders a reel folder (index.html with window.renderFrame and window.REEL) to an MP4.
 //   node render.mjs <reel> preview 1.5,12,30   stills at those seconds -> out/<reel>/preview-<t>.png
-//   node render.mjs <reel>                      every frame + synthesised sound -> out/<reel>.mp4
+//   node render.mjs <reel>                      every frame + synthesised sound (+ voiceover) -> out/<reel>.mp4
 // Needs Playwright's Chromium and ffmpeg (set FFMPEG to its path if it isn't on PATH).
 // BITRATE defaults to 3500k: plenty for Instagram, and a minute of video stays under 30 MB.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -27,7 +27,7 @@ page.on('requestfailed', (r) => errors.push('failed to load ' + r.url()))
 await page.goto('file://' + path.join(here, reel, 'index.html'))
 // Load every face the page declares before the first frame, so no frame falls back to another font.
 await page.evaluate(() => Promise.all([...document.fonts].map((f) => f.load())))
-const { fps, duration, sounds } = await page.evaluate(() => window.REEL)
+const { fps, duration, sounds, voice } = await page.evaluate(() => window.REEL)
 
 if (mode === 'preview') {
   for (const t of list.split(',').map(Number)) {
@@ -46,14 +46,14 @@ if (mode === 'preview') {
   }
   console.log(`${total} frames in ${((Date.now() - started) / 1000).toFixed(0)} s`)
 
-  writeFileSync(path.join(out, 'sound.wav'), wav(synth(sounds, duration)))
+  writeFileSync(path.join(out, 'sound.wav'), wav(mix(synth(sounds, duration), voice)))
   const video = path.join(here, 'out', `${reel}.mp4`)
   const input = ['-framerate', String(fps), '-i', path.join(frames, 'f%05d.jpg')]
   const x264 = ['-c:v', 'libx264', '-preset', 'slow', '-b:v', BITRATE, '-passlogfile', path.join(out, 'x264')]
   // Two passes at a fixed bitrate: film grain is noise, so quality-based encoding balloons the file.
   execFileSync(FFMPEG, ['-y', '-loglevel', 'error', ...input, ...x264, '-pass', '1', '-an', '-f', 'null', '/dev/null'])
   execFileSync(FFMPEG, ['-y', '-loglevel', 'error', ...input, '-i', path.join(out, 'sound.wav'), ...x264, '-pass', '2',
-    '-maxrate', '5M', '-bufsize', '8M', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-shortest', '-movflags', '+faststart', video])
+    '-maxrate', '5M', '-bufsize', '8M', '-pix_fmt', 'yuv420p', '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '44100', '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-shortest', '-movflags', '+faststart', video])
   console.log('wrote', path.relative(here, video))
 }
 console.log(errors.length ? 'page errors:\n' + errors.join('\n') : 'no page errors')
@@ -83,6 +83,33 @@ function synth(cues, seconds, rate = 44100) {
   const peak = buf.reduce((m, v) => Math.max(m, Math.abs(v)), 0)
   if (peak > 0.9) for (let i = 0; i < buf.length; i++) buf[i] *= 0.9 / peak
   return { buf, rate }
+}
+
+// Lays the voiceover lines ({ at, from, to }, seconds) over the cues, and dips the cues to 45% while the voice speaks.
+function mix({ buf, rate }, voice) {
+  if (!voice) return { buf, rate }
+  const pcm = execFileSync(FFMPEG, ['-loglevel', 'error', '-i', path.join(here, reel, voice.file), '-f', 'f32le', '-ac', '1', '-ar', String(rate), 'pipe:1'], { maxBuffer: 1 << 28 })
+  const src = new Float32Array(pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.length))
+  const out = new Float32Array(buf.length)
+  const duck = new Float32Array(buf.length).fill(1)
+  const edge = Math.round(0.01 * rate)
+  const ramp = Math.round(0.08 * rate)
+  for (const { at, from, to } of voice.lines) {
+    const s0 = Math.round(at * rate)
+    const a = Math.round(from * rate)
+    const n = Math.round((to - from) * rate)
+    for (let i = 0; i < n && s0 + i < out.length && a + i < src.length; i++) out[s0 + i] += src[a + i] * Math.min(1, i / edge, (n - i) / edge)
+    for (let i = -ramp; i < n + ramp; i++) {
+      const j = s0 + i
+      if (j < 0 || j >= duck.length) continue
+      const away = i < 0 ? -i / ramp : i >= n ? (i - n) / ramp : 0
+      duck[j] = Math.min(duck[j], 0.45 + 0.55 * away)
+    }
+  }
+  for (let i = 0; i < out.length; i++) out[i] += buf[i] * duck[i]
+  const peak = out.reduce((m, v) => Math.max(m, Math.abs(v)), 0)
+  if (peak > 0.95) for (let i = 0; i < out.length; i++) out[i] *= 0.95 / peak
+  return { buf: out, rate }
 }
 
 function wav({ buf, rate }) {
