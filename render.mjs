@@ -1,20 +1,24 @@
 // Renders a reel folder (index.html with window.renderFrame and window.REEL) to an MP4.
 //   node render.mjs <reel> preview 1.5,12,30   stills at those seconds -> out/<reel>/preview-<t>.png
-//   node render.mjs <reel>                      every frame + synthesised sound (+ voiceover) -> out/<reel>.mp4
+//   node render.mjs <reel> captions             the captions alone -> out/<reel>.srt
+//   node render.mjs <reel>                      every frame + synthesised sound (+ voiceover) -> out/<reel>.mp4 (+ .srt)
+// A query picks another cut of the same reel: "playzone-bucks?cut=30" writes out/playzone-bucks-cut30.mp4.
 // Needs Playwright's Chromium and ffmpeg (set FFMPEG to its path if it isn't on PATH).
 // BITRATE defaults to 3500k: plenty for Instagram, and a minute of video stays under 30 MB.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const [reel, mode, list] = process.argv.slice(2)
-if (!reel) throw new Error('usage: node render.mjs <reel> [preview t1,t2,...]')
+const [target, mode, list] = process.argv.slice(2)
+if (!target) throw new Error('usage: node render.mjs <reel>[?cut=30] [preview t1,t2,... | captions]')
+const [reel, query] = target.split('?')
+const name = query ? `${reel}-${query.replace(/[^a-z0-9]+/gi, '')}` : reel
 const FFMPEG = process.env.FFMPEG || 'ffmpeg'
 const BITRATE = process.env.BITRATE || '3500k'
-const out = path.join(here, 'out', reel)
+const out = path.join(here, 'out', name)
 mkdirSync(out, { recursive: true })
 
 const { chromium } = await import('playwright').catch(() => createRequire('/opt/node22/lib/node_modules/')('playwright'))
@@ -24,12 +28,17 @@ const errors = []
 page.on('pageerror', (e) => errors.push(e.message))
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
 page.on('requestfailed', (r) => errors.push('failed to load ' + r.url()))
-await page.goto('file://' + path.join(here, reel, 'index.html'))
+await page.goto(pathToFileURL(path.join(here, reel, 'index.html')).href + (query ? '?' + query : ''))
 // Load every face the page declares before the first frame, so no frame falls back to another font.
 await page.evaluate(() => Promise.all([...document.fonts].map((f) => f.load())))
-const { fps, duration, sounds, voice } = await page.evaluate(() => window.REEL)
+const { fps, duration, sounds, voice, captions } = await page.evaluate(() => window.REEL)
+const subtitles = path.join(here, 'out', `${name}.srt`)
 
-if (mode === 'preview') {
+if (mode === 'captions') {
+  if (!captions?.length) throw new Error(`${target} has no captions`)
+  writeFileSync(subtitles, srt(captions, duration))
+  console.log('wrote', path.relative(here, subtitles))
+} else if (mode === 'preview') {
   for (const t of list.split(',').map(Number)) {
     await page.evaluate((t) => window.renderFrame(t), t)
     await page.screenshot({ path: path.join(out, `preview-${t}.png`) })
@@ -47,7 +56,7 @@ if (mode === 'preview') {
   console.log(`${total} frames in ${((Date.now() - started) / 1000).toFixed(0)} s`)
 
   writeFileSync(path.join(out, 'sound.wav'), wav(mix(synth(sounds, duration), voice)))
-  const video = path.join(here, 'out', `${reel}.mp4`)
+  const video = path.join(here, 'out', `${name}.mp4`)
   const input = ['-framerate', String(fps), '-i', path.join(frames, 'f%05d.jpg')]
   const x264 = ['-c:v', 'libx264', '-preset', 'slow', '-b:v', BITRATE, '-passlogfile', path.join(out, 'x264')]
   // Two passes at a fixed bitrate: film grain is noise, so quality-based encoding balloons the file.
@@ -55,6 +64,10 @@ if (mode === 'preview') {
   execFileSync(FFMPEG, ['-y', '-loglevel', 'error', ...input, '-i', path.join(out, 'sound.wav'), ...x264, '-pass', '2',
     '-maxrate', '5M', '-bufsize', '8M', '-pix_fmt', 'yuv420p', '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '44100', '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-shortest', '-movflags', '+faststart', video])
   console.log('wrote', path.relative(here, video))
+  if (captions?.length) {
+    writeFileSync(subtitles, srt(captions, duration))
+    console.log('wrote', path.relative(here, subtitles))
+  }
 }
 console.log(errors.length ? 'page errors:\n' + errors.join('\n') : 'no page errors')
 await browser.close()
@@ -110,6 +123,28 @@ function mix({ buf, rate }, voice) {
   const peak = out.reduce((m, v) => Math.max(m, Math.abs(v)), 0)
   if (peak > 0.95) for (let i = 0; i < out.length; i++) out[i] *= 0.95 / peak
   return { buf: out, rate }
+}
+
+// Captions ({ from, to, text }, seconds) as SubRip, the caption file Meta's ads and YouTube take beside a video.
+// Each caption holds until the next when the gap is short, and for at least a second where there's room;
+// a long one breaks onto two lines at the space nearest its middle.
+function srt(captions, duration) {
+  const stamp = (s) => {
+    const ms = Math.round(s * 1000)
+    const pad = (n, w = 2) => String(n).padStart(w, '0')
+    return `${pad(Math.floor(ms / 3600000))}:${pad(Math.floor(ms / 60000) % 60)}:${pad(Math.floor(ms / 1000) % 60)},${pad(ms % 1000, 3)}`
+  }
+  const lines = (text) => {
+    if (text.length <= 38 || !text.includes(' ')) return text
+    const spaces = [...text.matchAll(/ /g)].map((m) => m.index)
+    const cut = spaces.reduce((a, b) => (Math.abs(b - text.length / 2) < Math.abs(a - text.length / 2) ? b : a))
+    return text.slice(0, cut) + '\n' + text.slice(cut + 1)
+  }
+  return captions.map(({ from, to, text }, i) => {
+    const next = captions[i + 1]?.from ?? duration
+    const end = next - to < 0.6 ? next - 0.08 : Math.min(Math.max(to, from + 1), next - 0.08)
+    return `${i + 1}\n${stamp(from)} --> ${stamp(end)}\n${lines(text)}\n`
+  }).join('\n')
 }
 
 function wav({ buf, rate }) {
