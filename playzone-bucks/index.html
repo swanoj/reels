@@ -121,6 +121,13 @@
   .venue .a { font-weight: 500; font-size: 28px; letter-spacing: 0.1em; color: #b9b9b2; margin-top: 10px; }
   .venue .b { font-weight: 700; font-size: 40px; letter-spacing: 0.08em; margin-top: 34px; color: var(--gold); }
 
+  /* The ad cut keeps its end card clear of the bottom third, where a Reels ad puts its caption and button,
+     and sets the price's small print large enough to read on a phone. */
+  .ad .sorted { top: 300px; }
+  .ad .tags { top: 810px; }
+  .ad .venue { top: 950px; }
+  .ad .fine { font-size: 20px; color: var(--label); }
+
   #grain { position: absolute; inset: 0; width: 1080px; height: 1920px; opacity: 0.06; mix-blend-mode: screen; pointer-events: none; }
 </style>
 </head>
@@ -237,24 +244,49 @@
   const { $, clamp01, prog, show, type, scenes, steps, fmt, icon, grain, chat } = Reel
 
   const FPS = 24
-  // Scene lengths, each long enough for its voiceover line. Times inside a scene are offsets from its start (S.x).
-  const LEN = { A: 6.9, B: 10.0, C: 10.0, D: 6.9, E: 6.3, F: 9.4, G: 6.8, H: 4.4 }
-  const S = {}
+  // Two cuts from one timeline: the full reel, and ?cut=30, a 30-second ad (the file, the chat, the breakthrough,
+  // the evidence, the end card). Each cut gives its scenes' lengths, long enough for their voiceover lines, and the lines:
+  // [scene, seconds after the scene starts, span in voice/voiceover.mp3]. Times inside a scene are offsets from its start (S.x).
+  const CUTS = {
+    full: {
+      LEN: { A: 6.9, B: 10.0, C: 10.0, D: 6.9, E: 6.3, F: 9.4, G: 6.8, H: 4.4 },
+      lines: [['A', 0.35, 0.0, 5.92], ['B', 0.6, 7.43, 13.79], ['C', 0.35, 15.25, 23.23], ['D', 0.5, 24.5, 30.23],
+        ['E', 0.15, 31.53, 37.24], ['F', 0.3, 38.37, 46.89], ['G', 0.24, 48.07, 53.17], ['H', 0, 54.72, 56.5]],
+    },
+    30: {
+      LEN: { A: 6.35, B: 6.7, E: 4.3, F: 8.8, H: 3.85 },
+      // The breakthrough line stops after "Dane Swan's PlayZone"; Surfers Paradise stays on screen.
+      lines: [['A', 0.35, 0.0, 5.92], ['B', 0.25, 7.43, 13.79], ['E', 0.15, 31.53, 35.55], ['F', 0.2, 38.37, 46.89], ['H', 0, 54.72, 56.5]],
+    },
+  }
+  const CUT = new URLSearchParams(location.search).get('cut') === '30' ? '30' : 'full'
+  const { LEN, lines } = CUTS[CUT]
+  document.body.classList.toggle('ad', CUT === '30')
+  const S = { A: Infinity, B: Infinity, C: Infinity, D: Infinity, E: Infinity, F: Infinity, G: Infinity, H: Infinity }   // scenes a cut leaves out never start
   let DURATION = 0
   for (const k in LEN) { S[k] = DURATION; DURATION += LEN[k] }
   const SCENES = Object.keys(LEN).map((k) => [k, S[k], k === 'H' ? DURATION + 0.1 : S[k] + LEN[k], k === 'H'])
   const SOUNDS = []   // [t, kind] cues, synthesised by render.mjs
   const cue = (t, kind) => SOUNDS.push([t, kind])
 
-  // voice/voiceover.mp3 is one ElevenLabs take (voice "Jack - Calm and Narrative", eleven_multilingual_v2), 1.5 s between lines.
-  // Each line: its scene, how long after the scene starts it plays, and its span in the file (from silence detection).
-  // The beats in each scene below sit on the words, measured the same way.
-  const VOICE = {
-    file: 'voice/voiceover.mp3',
-    lines: [['A', 0.35, 0.0, 5.92], ['B', 0.6, 7.43, 13.79], ['C', 0.35, 15.25, 23.23], ['D', 0.5, 24.5, 30.23],
-      ['E', 0.15, 31.53, 37.24], ['F', 0.3, 38.37, 46.89], ['G', 0.24, 48.07, 53.17], ['H', 0, 54.72, 56.5]]
-      .map(([k, lead, from, to]) => ({ at: S[k] + lead, from, to })),
+  // voice/voiceover.mp3 is one ElevenLabs take (voice "Jack - Calm and Narrative", eleven_multilingual_v2), 1.5 s between lines;
+  // the spans come from silence detection, and the beats in each scene below sit on the words, measured the same way.
+  const VOICE = { file: 'voice/voiceover.mp3', lines: lines.map(([k, lead, from, to]) => ({ at: S[k] + lead, from, to })) }
+
+  // Captions, written as an .srt beside the video: each scene's phrases, in seconds from the start of its line.
+  const PHRASES = {
+    A: [[0.0, 1.83, "He told the boys he'd sort the bucks."], [2.23, 4.2, 'He had no plan. No booking.'], [4.53, 5.82, 'Just... a group chat.']],
+    B: [[0.08, 4.03, 'Within the hour, fourteen blokes had sent 347 messages.'], [4.17, 6.23, 'Decisions made: zero.']],
+    C: [[0.08, 1.48, 'Boat day. Done it.'], [1.85, 3.26, 'Paintball. Rain.'], [3.56, 5.46, 'A pub crawl. Six bookings.'], [5.74, 7.9, 'Every idea floated... was rejected.']],
+    D: [[0.08, 2.2, 'Suggest. Vote. Argue.'], [2.52, 3.92, 'Mute the chat. Repeat.'], [4.23, 5.61, 'And the days kept ticking down.']],
+    E: [[0.05, 2.25, 'Then someone found one place that does all of it.'], [2.66, 3.96, "Dane Swan's PlayZone."], [4.32, 5.42, 'Surfers Paradise.']],
+    F: [[0.08, 2.0, 'A bucking bull. UV pickleball.'], [2.17, 4.25, 'A giant ball pit. A dunk tank.'], [4.5, 6.55, 'Pizza, drinks, one booking.'], [6.6, 8.07, 'From $59 a head.']],
+    G: [[0.08, 0.45, 'Booked.'], [1.11, 2.22, 'The chat went quiet.'], [2.57, 3.82, 'Then it called him a legend.'], [4.11, 5.0, 'Case closed.']],
+    H: [[0.09, 1.38, 'Bucks. Sorted.']],
   }
+  const CAPTIONS = lines.flatMap(([k, lead, from, to]) => PHRASES[k]
+    .filter(([, end]) => end <= to - from + 0.1)
+    .map(([start, end, text]) => ({ from: S[k] + lead + start, to: S[k] + lead + end, text })))
 
   // A: the file. "He had no plan. No booking. Just... a group chat."
   const A_ROWS = [[2.45, 2.95, 3.25], [3.8, 4.05, 4.35], [5.25, null, 5.7]].map((r) => r.map((x) => (x === null ? null : S.A + x)))
@@ -276,11 +308,12 @@
 
   // B: the group chat. "Within the hour, fourteen blokes had sent three hundred and forty-seven messages. Decisions made: zero."
   const MEMBERS = 'Tommo, Dazza, Jacko, Benno, Mick, Rhys +8'
+  const [FLOOD_START, FLOOD_STEP] = CUT === '30' ? [0.35, 0.5] : [0.8, 0.7]   // the ad cut floods faster
   const FLOOD = [
     ['Tommo', "who's actually organising this"], ['Dazza', 'best man 👀'], ['Jacko', 'something ACTIVE this time pls'],
     ['Benno', 'budget??'], ['Mick', "I'm in if there's food"], ['Tommo', 'boat day?'], ['Dazza', "did a boat day for Col's"],
     ['Jacko', 'paintball'], ['Benno', 'forecast says rain'], ['Rhys', 'can we do ONE place. not 5 bookings'], ['Mick', 'and food'],
-  ].map(([from, text], i) => ({ at: S.B + 0.8 + i * 0.7, from, text, time: `9:${String(41 + Math.floor(i / 3)).padStart(2, '0')} pm` }))
+  ].map(([from, text], i) => ({ at: S.B + FLOOD_START + i * FLOOD_STEP, from, text, time: `9:${String(41 + Math.floor(i / 3)).padStart(2, '0')} pm` }))
   FLOOD.forEach((m) => cue(m.at, 'pop'))
   const UNREAD = [14, 37, 61, 88, 119, 146, 178, 213, 251, 296, 347]
   const chatB = chat($('b-chat'), { title: "Jake's Bucks 🍻", avatar: '🤠', members: MEMBERS, messages: FLOOD })
@@ -350,7 +383,7 @@
       show(el, t, d + 0.25 + i * 0.08, 0.3, 8)
       el.classList.toggle('on', t >= LIGHT[i])
     }
-    $('d-arc').setAttribute('stroke-dashoffset', ARC * (1 - clamp01((t - LIGHT[0]) / (REPEAT - LIGHT[0]))))
+    if (Number.isFinite(REPEAT)) $('d-arc').setAttribute('stroke-dashoffset', ARC * (1 - clamp01((t - LIGHT[0]) / (REPEAT - LIGHT[0]))))
     show($('d-centre'), t, REPEAT, 0.3, 0)
     show($('d-strip'), t, d + 0.6, 0.35, 12)
     const passed = DAYS_AT.filter((at) => t >= at).length
@@ -451,7 +484,7 @@
     show($('h-b'), t, h + 2.15, 0.35, 10)
   }
 
-  window.REEL = { fps: FPS, duration: DURATION, sounds: SOUNDS, voice: VOICE }
+  window.REEL = { fps: FPS, duration: DURATION, sounds: SOUNDS.filter(([t]) => t < DURATION), voice: VOICE, captions: CAPTIONS }
   window.renderFrame = (t) => {
     scenes(SCENES, t)
     sceneA(t); sceneB(t); sceneC(t); sceneD(t); sceneE(t); sceneF(t); sceneG(t); sceneH(t)
